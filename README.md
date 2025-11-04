@@ -20,3 +20,9 @@ https://login.inrupt.com/
 ### Solid OIDC
 
 
+#### Cleanup processes
+
+```bash
+lsof -n -i4TCP:2233
+kill -9 PID
+```

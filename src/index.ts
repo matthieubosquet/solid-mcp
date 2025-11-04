@@ -28,6 +28,7 @@ config({ path: '.env.local' });
 // Define tool schemas
 const ReadFileArgsSchema = z.object({
     // No parameters needed - we'll get the WebID from the authenticated session
+    x: z.string().describe("Read solid resource"),
 });
 
 const WriteFileArgsSchema = z.object({
@@ -49,6 +50,7 @@ export class SolidMCPServer {
     private sigintHandler: (() => Promise<void>) | null = null;
 
     constructor() {
+        console.error("SOLID MCP SERVER CONSTRUCTOR");
         this.session = new Session();
         this.server = new Server(
             {
@@ -88,136 +90,26 @@ export class SolidMCPServer {
         }
     }
 
-    protected async authenticateWithSolidClientCredentials(): Promise<void> {
-        const clientId = process.env.SOLID_CLIENT_ID;
-        const clientSecret = process.env.SOLID_CLIENT_SECRET;
-        const oidcIssuer = process.env.SOLID_OIDC_ISSUER || "https://login.inrupt.com/";
-
-        if (!clientId || !clientSecret) {
-            throw new Error("Missing SOLID_CLIENT_ID or SOLID_CLIENT_SECRET environment variables");
-        }
-
-        try {
-            await this.session.login({
-                clientId,
-                clientSecret,
-                oidcIssuer,
-            });
-
-            if (this.session.info.isLoggedIn) {
-                console.error(`Successfully authenticated with Solid Pod. WebID: ${this.session.info.webId}`);
-            } else {
-                throw new Error("Authentication failed - session is not logged in");
-            }
-        } catch (error) {
-            console.error("Failed to authenticate with Solid Pod:", error);
-            throw error;
-        }
-    }
-
-    protected async fetchWebIdProfile(webId: string): Promise<string> {
-        try {
-            // Fetch the WebID profile document
-            const profileDataset = await getSolidDataset(webId, {
-                fetch: this.session.fetch,
-            });
-
-            // Get the profile thing (the WebID itself)
-            const profile = getThing(profileDataset, webId);
-
-            if (!profile) {
-                throw new Error(`No profile found at WebID: ${webId}`);
-            }
-
-            // Extract profile information using common RDF vocabularies
-            const name = getStringNoLocale(profile, "http://xmlns.com/foaf/0.1/name") ||
-                getStringNoLocale(profile, "http://www.w3.org/2006/vcard/ns#fn") ||
-                "Name not available";
-
-            const email = getStringNoLocale(profile, "http://xmlns.com/foaf/0.1/mbox") ||
-                getStringNoLocale(profile, "http://www.w3.org/2006/vcard/ns#hasEmail") ||
-                "Email not available";
-
-            const homepage = getUrl(profile, "http://xmlns.com/foaf/0.1/homepage") || "Homepage not available";
-
-            // Get friends/connections count
-            const knowsPredicate = profile.predicates["http://xmlns.com/foaf/0.1/knows"];
-            const friendsCount = knowsPredicate ? (knowsPredicate.namedNodes?.length || 0) : 0;
-
-            // Format the profile information
-            const profileInfo = `
-🔐 Solid Authentication & WebID Profile
-======================================
-
-✅ Authentication Status: Successfully authenticated with Solid Pod
-🆔 WebID Retrieved from Session: ${webId}
-
-📋 Profile Information:
-----------------------
-Name: ${name}
-Email: ${email}
-Homepage: ${homepage}
-Friends/Connections: ${friendsCount}
-
-🔗 Session Details:
-------------------
-Logged In: ${this.session.info.isLoggedIn ? 'Yes' : 'No'}
-Session WebID: ${this.session.info.webId || 'Not available'}
-OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
-`;
-
-            return profileInfo;
-        } catch (error) {
-            throw new Error(`Failed to fetch WebID profile: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }
-
     protected setupToolHandlers(): void {
 
 
+        console.error("SETUP TOOL HANDLERS")
         // List available tools
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
             return {
                 tools: [
                     {
-                        name: "read_file",
-                        description: "Authenticate with Solid Pod and retrieve your WebID profile information",
-                        inputSchema: {
-                            type: "object",
-                            properties: {},
-                            required: [],
-                        },
-                    },
-                    {
-                        name: "write_file",
-                        description: "Write content to a file",
+                        name: "readsolid",
+                        description: "Read a solid resource",
                         inputSchema: {
                             type: "object",
                             properties: {
-                                path: {
+                                x: {
                                     type: "string",
-                                    description: "Path to the file to write",
-                                },
-                                content: {
-                                    type: "string",
-                                    description: "Content to write to the file",
+                                    description: "The request URI",
                                 },
                             },
-                            required: ["path", "content"],
-                        },
-                    },
-                    {
-                        name: "list_directory",
-                        description: "List the contents of a directory",
-                        inputSchema: {
-                            type: "object",
-                            properties: {
-                                path: {
-                                    type: "string",
-                                    description: "Path to the directory to list",
-                                },
-                            },
-                            required: ["path"],
+                            required: ["x"],
                         },
                     },
                     {
@@ -240,78 +132,50 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
 
         // Handle tool calls
         this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+            console.error("SET REQUEST HANDLER")
             const { name, arguments: args } = request.params;
 
             try {
                 switch (name) {
-                    case "read_file": {
-                        ReadFileArgsSchema.parse(args);
+                    case "readsolid": {
+                        const { x } = ReadFileArgsSchema.parse(args);
 
                         // Authenticate with Solid if not already authenticated
                         if (!this.session.info.isLoggedIn) {
-                            await this.authenticateWithSolidClientCredentials();
+                            console.error("SOLID NOT AUTHENTICATED")
+                            
+                            return {
+                            content: [
+                                    {
+                                        type: "text",
+                                        text: "not authenticated",
+                                    },
+                                ],
+                            };
                         }
-
-                        // Get the WebID from the authenticated session
-                        const webId = this.session.info.webId;
-                        if (!webId) {
-                            throw new Error("No WebID found in authenticated session");
+                        else {
+                            console.error("SOLID AUTHENTICATED")
+                            const response = await this.session.fetch(x)
+                            const xx = await response.text();
+                            return {
+                            content: [
+                                    {
+                                        type: "text",
+                                        text: xx,
+                                    },
+                                ],
+                            };
                         }
-
-                        // Fetch the WebID profile using the session's WebID
-                        const profileInfo = await this.fetchWebIdProfile(webId);
-
-                        return {
-                            content: [
-                                {
-                                    type: "text",
-                                    text: profileInfo,
-                                },
-                            ],
-                        };
-                    }
-
-                    case "write_file": {
-                        const { path, content } = WriteFileArgsSchema.parse(args);
-                        const resolvedPath = resolve(path);
-                        await fs.writeFile(resolvedPath, content, "utf-8");
-                        return {
-                            content: [
-                                {
-                                    type: "text",
-                                    text: `Successfully wrote to ${path}`,
-                                },
-                            ],
-                        };
-                    }
-
-                    case "list_directory": {
-                        const { path } = ListDirectoryArgsSchema.parse(args);
-                        const resolvedPath = resolve(path);
-                        const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
-                        const formatted = entries
-                            .map((entry) => {
-                                const type = entry.isDirectory() ? "📁" : "📄";
-                                return `${type} ${entry.name}`;
-                            })
-                            .join("\n");
-
-                        return {
-                            content: [
-                                {
-                                    type: "text",
-                                    text: `Directory: ${path}\n\n${formatted}`,
-                                },
-                            ],
-                        };
                     }
 
                     case "calculate": {
+                        console.error("CALCULATE")
                         const { expression } = CalculateArgsSchema.parse(args);
                         // Simple and safe mathematical expression evaluation
                         // Only allow basic arithmetic operations
                         const sanitized = expression.replace(/[^0-9+\-*/.() ]/g, "");
                         if (sanitized !== expression) {
+                            console.error("Invalid characters in expression. Only numbers and +, -, *, /, (, ) are allowed")
                             throw new Error("Invalid characters in expression. Only numbers and +, -, *, /, (, ) are allowed.");
                         }
 
@@ -327,14 +191,17 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
                                 ],
                             };
                         } catch (error) {
+                            console.error("CALCULATE Failed to evaluate expression")
                             throw new Error(`Failed to evaluate expression: ${error instanceof Error ? error.message : String(error)}`);
                         }
                     }
 
                     default:
+                        console.error("UNKNOWN TOOL")
                         throw new Error(`Unknown tool: ${name}`);
                 }
             } catch (error) {
+                console.error("CATCH ERROR")
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 return {
                     content: [
@@ -351,44 +218,33 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
 
 
     async run(): Promise<void> {
-        let requestState: AuthorizationRequestState;
+        console.error("SOLID MCP SERVER RUN");
         let tokens: SessionTokenSet;
-        let session: Session;
 
-        console.log("RUNNING");
-        
-        const server = http.createServer(async function (req, res) {
+        const server = http.createServer(async (req, res) => {
+            console.error("SOLID MCP SERVER CREATE SERVER");
             if (req.url?.includes("callback")) {
-                //const session = await Session.fromAuthorizationRequestState(requestState);
-
-                session.events.on("newTokens", (tokenSet) => {
+                this.session.events.on("newTokens", (tokenSet) => {
                     tokens = tokenSet;
                 });
 
-                const x = await session.handleIncomingRedirect(`http://localhost:2233${req.url}`);
+                const x = await this.session.handleIncomingRedirect(`http://localhost:2233${req.url}`);
 
 
-                const response = await session.fetch("");
+                const response = await this.session.fetch("https://storage.inrupt.com/47029fdd-c73d-4f53-9a36-66533a892245/");
                 const text = await response.text();
-                console.log("text");
-                console.log(text);
 
-
-                res.write("<html><body onclick='close()'>close this window</body></html>");
+                res.write("<html><body><button onclick='window.close()'>close this window</button></body></html>");
                 res.end();
 
                 server.close();
+                //setImmediate(function(){server.emit('close')});
             }
 
             if (req.url?.includes("start")) {
-                session = new Session({  keepAlive: false })
-                //session.events.on("authorizationRequest", (authorizationRequestState) => {
-                //    console.log("session.events.on(authorizationRequest)");
-                //    console.log(authorizationRequestState);
-                //    requestState = authorizationRequestState;
-                //});
+                this.session = new Session({  keepAlive: false })
 
-                await session.login({
+                await this.session.login({
                     redirectUrl: `http://localhost:2233/callback`,
                     oidcIssuer: "https://login.inrupt.com",
                     handleRedirect: (redirectUri) => {
@@ -398,22 +254,9 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
                     },
                 });
             }
-
         }).listen(2233);
-        console.log("SERVER RAN")
 
-
-
-
-        // start webserver or listen to port 2233 whatever
-        // serve a 'start authorization code' page
-        // serve a 'callback' page
         await open('http://localhost:2233/start', { wait: true });
-        // that page sends to idp withe redirect_uri=http://localhost:2233/callback
-        // callback page (on server) gets code, passess back to this process
-        // here: exchange code for token using inrupt sdk
-        // profit
-
 
         const transport = new StdioServerTransport();
         await this.server.connect(transport);
@@ -421,6 +264,7 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
     }
 }
 
+console.error("NEW SOLID MCP SERVER");
 // Start the server
 const server = new SolidMCPServer();
 server.run().catch((error) => {
