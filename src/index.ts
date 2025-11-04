@@ -88,7 +88,7 @@ export class SolidMCPServer {
         }
     }
 
-    protected async authenticateWithSolid(): Promise<void> {
+    protected async authenticateWithSolidClientCredentials(): Promise<void> {
         const clientId = process.env.SOLID_CLIENT_ID;
         const clientSecret = process.env.SOLID_CLIENT_SECRET;
         const oidcIssuer = process.env.SOLID_OIDC_ISSUER || "https://login.inrupt.com/";
@@ -249,7 +249,7 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
 
                         // Authenticate with Solid if not already authenticated
                         if (!this.session.info.isLoggedIn) {
-                            await this.authenticateWithSolid();
+                            await this.authenticateWithSolidClientCredentials();
                         }
 
                         // Get the WebID from the authenticated session
