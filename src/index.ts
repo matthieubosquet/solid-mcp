@@ -14,7 +14,7 @@ import { z } from "zod";
 import { promises as fs } from "fs";
 import { join, resolve } from "path";
 import { config } from "dotenv";
-import { Session } from "@inrupt/solid-client-authn-node";
+import { Session, AuthorizationRequestState, SessionTokenSet } from "@inrupt/solid-client-authn-node";
 import {
     getSolidDataset,
     getThing,
@@ -349,63 +349,56 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
         });
     }
 
+
     async run(): Promise<void> {
+        let requestState: AuthorizationRequestState;
+        let tokens: SessionTokenSet;
+        let session: Session;
+
         console.log("RUNNING");
         const authSdkBundle = await fs.readFile("./dist/script/solid-client-authn-browser.bundle.js");
-        const server = http.createServer(function (req, res) {
+        const server = http.createServer(async function (req, res) {
             if (req.url?.includes("callback")) {
-                console.log("CODE");
-                console.log(req.url);
-                // TODO: Extract `req.queryString["code"]`
-                // TODO: Give it to solid sdk so it can exchange for a token
-                // TODO: Remember token
+                //const session = await Session.fromAuthorizationRequestState(requestState);
 
-                // TODO: Server a page with JS that `window.close()`
-                // TODO: Close this server
+                session.events.on("newTokens", (tokenSet) => {
+                    tokens = tokenSet;
+                });
 
-                res.write("NOTHING YET");
-                res.write;
+                const x = await session.handleIncomingRedirect(`http://localhost:2233${req.url}`);
+
+
+                const response = await session.fetch("");
+                const text = await response.text();
+                console.log("text");
+                console.log(text);
+
+
+                res.write("<html><body onclick='close()'>close this window</body></html>");
                 res.end();
-                //server.close();
-            }
 
-            if (req.url?.includes("script")) {
-                res.writeHead(200, { 'Content-Type': 'text/javascript' });
-                res.write(authSdkBundle);
-                res.end();
+                server.close();
             }
 
             if (req.url?.includes("start")) {
-                res.writeHead(200, { 'Content-Type': 'text/html' });
+                session = new Session({  keepAlive: false })
+                //session.events.on("authorizationRequest", (authorizationRequestState) => {
+                //    console.log("session.events.on(authorizationRequest)");
+                //    console.log(authorizationRequestState);
+                //    requestState = authorizationRequestState;
+                //});
 
-                res.write(`
-<html>
-    <head>
-        <script src="./script"></script>
-        <script>
-            console.log("inline script")
-            const { login, getDefaultSession } = SolidAuth;
-            
-            async function startLogin() {
-              if (!getDefaultSession().info.isLoggedIn) {
-                await login({
-                  oidcIssuer: "https://login.inrupt.com",
-                  redirectUrl: new URL("/callback", window.location.href).toString(),
-                  clientName: "My application"
+                await session.login({
+                    redirectUrl: `http://localhost:2233/callback`,
+                    oidcIssuer: "https://login.inrupt.com",
+                    handleRedirect: (redirectUri) => {
+                        res.statusCode = 302;
+                        res.setHeader("Location", redirectUri);
+                        res.end();
+                    },
                 });
-              }
             }
-            startLogin();
 
-        </script>
-    </head>
-    <body>
-    hello world
-    </body>
-</html>
-`);
-                res.end();
-            }
         }).listen(2233);
         console.log("SERVER RAN")
 
