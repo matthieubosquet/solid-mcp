@@ -356,7 +356,7 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
         let session: Session;
 
         console.log("RUNNING");
-        const authSdkBundle = await fs.readFile("./dist/script/solid-client-authn-browser.bundle.js");
+        
         const server = http.createServer(async function (req, res) {
             if (req.url?.includes("callback")) {
                 //const session = await Session.fromAuthorizationRequestState(requestState);
