@@ -350,8 +350,11 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
     }
 
     async run(): Promise<void> {
+      console.log("RUNNING")
         const server = http.createServer(function (req, res) {
             if (req.url?.includes("callback")) {
+              console.log("CODE");
+              console.log(req.url);
                 // TODO: Extract `req.queryString["code"]`
                 // TODO: Give it to solid sdk so it can exchange for a token
                 // TODO: Remember token
@@ -361,16 +364,19 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
 
                 res.write("NOTHING YET");
                 res.write;
-                server.close();
+                res.end();
+                //server.close();
             }
 
             if (req.url?.includes("script")) {
+
                 res.writeHead(200, { 'Content-Type': 'text/javascript' });
 
-                // TODO: Server packed version of solid sdk
-                res.write("console.log('included script');");
-
-                res.end();
+                async function getScript() {
+                    res.write(await fs.readFile("./dist/script/solid-client-authn-browser.bundle.js"));
+                    res.end();
+                }
+                getScript();
             }
 
             if (req.url?.includes("start")) {
@@ -382,14 +388,31 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
         <script src="./script"></script>
         <script>
             console.log("inline script")
+            const { login, getDefaultSession } = SolidAuth;
+            
+            async function startLogin() {
+              // Start the Login Process if not already logged in.
+              if (!getDefaultSession().info.isLoggedIn) {
+                await login({
+                  oidcIssuer: "https://login.inrupt.com",
+                  redirectUrl: new URL("/callback", window.location.href).toString(),
+                  clientName: "My application"
+                });
+              }
+            }
+            startLogin();
+
         </script>
     </head>
-</head>
+    <body>
+    hello world
+    </body>
+</html>
 `);
                 res.end();
             }
         }).listen(2233);
-
+console.log("SERVER RAN")
 
 
 
