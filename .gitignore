@@ -49,3 +49,4 @@ coverage/
 
 # Optional eslint cache
 .eslintcache
+/.vs
