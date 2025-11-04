@@ -350,11 +350,12 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
     }
 
     async run(): Promise<void> {
-      console.log("RUNNING")
+        console.log("RUNNING");
+        const authSdkBundle = await fs.readFile("./dist/script/solid-client-authn-browser.bundle.js");
         const server = http.createServer(function (req, res) {
             if (req.url?.includes("callback")) {
-              console.log("CODE");
-              console.log(req.url);
+                console.log("CODE");
+                console.log(req.url);
                 // TODO: Extract `req.queryString["code"]`
                 // TODO: Give it to solid sdk so it can exchange for a token
                 // TODO: Remember token
@@ -369,14 +370,9 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
             }
 
             if (req.url?.includes("script")) {
-
                 res.writeHead(200, { 'Content-Type': 'text/javascript' });
-
-                async function getScript() {
-                    res.write(await fs.readFile("./dist/script/solid-client-authn-browser.bundle.js"));
-                    res.end();
-                }
-                getScript();
+                res.write(authSdkBundle);
+                res.end();
             }
 
             if (req.url?.includes("start")) {
@@ -391,7 +387,6 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
             const { login, getDefaultSession } = SolidAuth;
             
             async function startLogin() {
-              // Start the Login Process if not already logged in.
               if (!getDefaultSession().info.isLoggedIn) {
                 await login({
                   oidcIssuer: "https://login.inrupt.com",
@@ -412,7 +407,7 @@ OIDC Issuer: ${process.env.SOLID_OIDC_ISSUER || 'https://login.inrupt.com/'}
                 res.end();
             }
         }).listen(2233);
-console.log("SERVER RAN")
+        console.log("SERVER RAN")
 
 
 
