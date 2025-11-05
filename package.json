@@ -6,12 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
-    "watch": "tsx watch src/index.ts",
-    "test": "npm run build && node --test test/solid-auth-unit.test.js",
-    "test:unit": "node --test test/solid-auth-unit.test.js",
-    "test:integration": "node test/test-solid-auth.js"
+    "start": "node dist/index.js"
   },
   "keywords": [
     "mcp",
