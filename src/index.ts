@@ -1,166 +1,75 @@
-#!/usr/bin/env node
-
 import open from "open";
 import http from "node:http";
-
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-    CallToolRequestSchema,
-    ListToolsRequestSchema,
-    Tool,
-} from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { config } from "dotenv";
 import { Session } from "@inrupt/solid-client-authn-node";
 
-config({ path: ".env.local" });
+let session: Session;
 
-const ReadFileArgsSchema = z.object({
-    resourceUri: z.string().describe("The URI (address) of the Solid resource"),
-});
-
-export class SolidMCPServer {
-    private server: Server;
-    protected session: Session;
-    private sigintHandler: (() => Promise<void>) | null = null;
-
-    constructor() {
-        this.session = new Session();
-        this.server = new Server(
-            {
-                name: "solid-mcp",
-                version: "1.0.0",
-            },
-            {
-                capabilities: {
-                    tools: {},
-                },
-            }
-        );
-
-        this.setupToolHandlers();
-        this.setupErrorHandling();
-    }
-
-    protected setupErrorHandling(): void {
-        this.server.onerror = (error) => {
-            console.error("[MCP Error]", error);
-        };
-
-        this.sigintHandler = async () => {
-            await this.server.close();
-            process.exit(0);
-        };
-
-        process.on("SIGINT", this.sigintHandler);
-    }
-
-    protected cleanup(): void {
-        if (this.sigintHandler) {
-            process.off("SIGINT", this.sigintHandler);
-            this.sigintHandler = null;
-        }
-    }
-
-    protected setupToolHandlers(): void {
-        this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+const server = new McpServer({ name: "mcpservername1", version: "0.0.0" });
+server.registerTool(
+    "readSolidResourceContent",
+    {
+        title: "Tool for reading the contents of a Solid resource as text",
+        description:
+            "This tool takes a single input parameter which is the URI of a Solid resource; it returns output which consists of the contents of the given Solid resource.",
+        inputSchema: { resourceUri: z.string() },
+    },
+    async (input) => {
+        if (!session.info.isLoggedIn) {
             return {
-                tools: [
+                content: [
                     {
-                        name: "readsolid",
-                        description: "Read a solid resource",
-                        inputSchema: {
-                            type: "object",
-                            properties: {
-                                resourceUri: {
-                                    type: "string",
-                                    description:
-                                        "The URI (address) of the Solid resource",
-                                },
-                            },
-                            required: ["resourceUri"],
-                        },
+                        type: "text",
+                        text: "not authenticated",
                     },
-                ] satisfies Tool[],
+                ],
             };
-        });
+        }
 
-        this.server.setRequestHandler(
-            CallToolRequestSchema,
-            async (request) => {
-                const { name, arguments: args } = request.params;
-
-                switch (name) {
-                    case "readsolid": {
-                        const { resourceUri } = ReadFileArgsSchema.parse(args);
-
-                        if (!this.session.info.isLoggedIn) {
-                            return {
-                                content: [
-                                    {
-                                        type: "text",
-                                        text: "not authenticated",
-                                    },
-                                ],
-                            };
-                        } else {
-                            const response =
-                                await this.session.fetch(resourceUri);
-                            return {
-                                content: [
-                                    {
-                                        type: "text",
-                                        text: await response.text(),
-                                    },
-                                ],
-                            };
-                        }
-                    }
-
-                    default:
-                        throw new Error(`Unknown tool: ${name}`);
-                }
-            }
-        );
+        const response = await session.fetch(input.resourceUri);
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: await response.text(),
+                },
+            ],
+        };
     }
+);
 
-    async run(): Promise<void> {
-        const server = http
-            .createServer(async (req, res) => {
-                if (req.url?.includes("callback")) {
-                    await this.session.handleIncomingRedirect(
-                        `http://localhost:2233${req.url}`
-                    );
+const httpServer = http
+    .createServer(async (req, res) => {
+        if (req.url?.includes("callback")) {
+            await session.handleIncomingRedirect(
+                `http://localhost:2233${req.url}`
+            );
 
-                    res.write("<html><body>close this window</body></html>");
+            res.write("<html><body>close this window</body></html>");
+            res.end();
+
+            httpServer.close();
+        }
+
+        if (req.url?.includes("start")) {
+            session = new Session({ keepAlive: false });
+
+            await session.login({
+                redirectUrl: "http://localhost:2233/callback",
+                oidcIssuer: "https://login.inrupt.com",
+                handleRedirect: (redirectUri) => {
+                    res.statusCode = 302;
+                    res.setHeader("Location", redirectUri);
                     res.end();
+                },
+            });
+        }
+    })
+    .listen(2233);
 
-                    server.close();
-                }
+await open("http://localhost:2233/start", { wait: true });
 
-                if (req.url?.includes("start")) {
-                    this.session = new Session({ keepAlive: false });
-
-                    await this.session.login({
-                        redirectUrl: "http://localhost:2233/callback",
-                        oidcIssuer: "https://login.inrupt.com",
-                        handleRedirect: (redirectUri) => {
-                            res.statusCode = 302;
-                            res.setHeader("Location", redirectUri);
-                            res.end();
-                        },
-                    });
-                }
-            })
-            .listen(2233);
-
-        await open("http://localhost:2233/start", { wait: true });
-
-        const transport = new StdioServerTransport();
-        await this.server.connect(transport);
-    }
-}
-
-const server = new SolidMCPServer();
-server.run().catch(() => process.exit(1));
+const transport = new StdioServerTransport();
+await server.connect(transport);
