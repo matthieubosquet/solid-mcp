@@ -17,7 +17,10 @@ One tool uses simple client credentials. This is useful for a developer interact
 4. Retrieve the client credentials and configure your `.env.local`
 https://login.inrupt.com/
 
+
 ### Solid OIDC
+
+Use Solid OIDC via pop up browser window.
 
 
 #### Cleanup processes
